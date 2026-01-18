@@ -11,9 +11,16 @@ class AnswerParser:
     _LAST_INT_RE = re.compile(r"([-+]?\d+)(?!.*\d)")
     _TUPLE_PAIR_RE = re.compile(r"\(\s*(\d+)\s*,\s*(\d+)\s*\)")
     _LAST_FLOAT_RE = re.compile(r'([+-]?(?:\d*\.\d+|\d+\.\d*)(?:[eE][+-]?\d+)?)')
+    # Ether0 model format: <|answer_start|>...<|answer_end|>
+    _ETHER0_ANSWER_RE = re.compile(r'<\|answer_start\|>(.*?)<\|answer_end\|>', re.DOTALL)
 
-    def __init__(self, question_file, doClean=True):
-
+    def __init__(self, question_files, doClean=True):
+        """Initialize parser with one or more question files.
+        
+        Args:
+            question_files: Path to question file or list of paths
+            doClean: Whether to clean/normalize parsed answers
+        """
         self._parsers = {
             "integer": self._parse_integer,
             "float": self._parse_float,
@@ -25,7 +32,7 @@ class AnswerParser:
             "string": self._parse_iupac,
         }
 
-        self.all_questions = self._read_question_file(question_file)
+        self.all_questions = self._read_question_files(question_files)
         self.question_dict = {q["uuid"]: q for q in self.all_questions}
         self.doClean = doClean
 
@@ -37,6 +44,9 @@ class AnswerParser:
         self.question_dict["list_of_tuples"] = {"answer_format": "list_of_tuples"}
         
         
+    # Regex to strip <thought>...</thought> tags (Google Gemini thinking output)
+    _THOUGHT_RE = re.compile(r'<thought>.*?</thought>', re.DOTALL)
+    
     def parse(self, uuid, raw_answer):
 
         question = self.question_dict.get(uuid)
@@ -53,6 +63,14 @@ class AnswerParser:
         if parser is None:
             raise ValueError(f"Answer format '{answer_format}' not implemented")
 
+        # Strip <thought>...</thought> tags if present (Google Gemini with include_thoughts=true)
+        raw_answer = self._THOUGHT_RE.sub('', str(raw_answer))
+        
+        # Extract answer from Ether0 format if present: <|answer_start|>...<|answer_end|>
+        ether0_match = self._ETHER0_ANSWER_RE.search(raw_answer)
+        if ether0_match:
+            raw_answer = ether0_match.group(1)
+        
         # do initial clean of strip and removing training "."
         raw_answer = raw_answer.strip().rstrip(".").strip()
 
@@ -62,11 +80,16 @@ class AnswerParser:
             return False
         return parsed if parsed is not None else False
 
-    def _read_question_file(self, question_file):
+    def _read_question_files(self, question_files):
+        """Read questions from one or more JSONL files."""
+        if isinstance(question_files, str):
+            question_files = [question_files]
+        
         all_questions = []
-        with open(question_file, 'r') as f:
-            for line in f:
-                all_questions.append(json.loads(line))
+        for question_file in question_files:
+            with open(question_file, 'r') as f:
+                for line in f:
+                    all_questions.append(json.loads(line))
 
         return all_questions
 

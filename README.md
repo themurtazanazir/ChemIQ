@@ -8,14 +8,88 @@ Read the paper here: https://arxiv.org/abs/2505.07735
 ## Quick start
 Create a conda environment:
 ```bash
-conda create -n ChemIQ python=3.11 numpy pandas matplotlib scipy requests openai rdkit jupyterlab ipykernel -c conda-forge
+conda create -n ChemIQ python=3.11 numpy pandas matplotlib scipy requests openai anthropic google-generativeai rdkit jupyterlab ipykernel -c conda-forge
 ```
 And activate it:
 ```bash
 conda activate ChemIQ
 ```
 
-All benchmark questions are stored in `questions/chemiq.jsonl`. 
+## Setup
+Create a `.env` file with your API keys:
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=AIza...
+```
+
+Or set them as environment variables:
+```bash
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOOGLE_API_KEY="AIza..."
+```
+
+## Running the Benchmark
+
+The workflow consists of two steps: submitting batches of questions to LLMs and evaluating the results using the automated pipeline.
+
+### 1. Submit Questions
+Use `submit_batch.py` to send questions to supported providers (OpenAI, Anthropic, Google). This script handles "thinking budget" parameters and file management.
+
+**Example: Run all questions on Gemini 3 Flash with high reasoning**
+```bash
+python3 submit_batch.py \
+    --provider google \
+    --model gemini-3-flash-preview \
+    --thinking-budget high \
+    --questions questions/chemiq.jsonl \
+    --env-file .env
+```
+
+**Parameters:**
+*   `--provider`: `openai`, `anthropic`, or `google`.
+*   `--model`: Model ID (e.g., `gpt-4o`, `claude-3-5-sonnet-20241022`).
+*   `--thinking-budget`: Controls reasoning effort.
+    *   **OpenAI (o1/o3)**: `low`, `medium`, `high`
+    *   **Google Gemini 3+**: `minimal`, `low`, `medium`, `high` (Strings only)
+    *   **Google Gemini 2.x / Anthropic**: Integer token count (e.g. `16000`)
+    *   Use `0` (or omit) for standard models or to use API defaults.
+*   `--env-file`: Path to environment file containing API keys (dotenv format).
+*   `--api-key`: Direct API key (alternative to `--env-file` or environment variables).
+
+### 2. Check Status & Download Results
+Use `download_results.py` to check batch status and download completed results.
+
+```bash
+python3 download_results.py \
+    --batch-id-file batch_ids/gemini-3-flash-preview-tb8192.txt \
+    --provider google \
+    --env-file .env
+```
+
+**Parameters:**
+*   `--batch-id-file`: Path to batch ID file (created by `submit_batch.py`).
+*   `--batch-id`: Batch ID directly (alternative to `--batch-id-file`).
+*   `--provider`: `openai`, `anthropic`, or `google`.
+*   `--env-file`: Path to environment file containing API keys (dotenv format).
+*   `--force`: Force re-download even if files already exist.
+
+The script will download JSONL results to `results/` and convert to CSV in `model_responses/`.
+
+### 3. Evaluate Results
+Use `evaluate.py` to process the downloaded responses, verify answers, and generate plots.
+
+```bash
+python3 evaluate.py \
+    --csv-dir model_responses \
+    --questions questions/chemiq.jsonl \
+    --output-dir figures
+```
+
+**Output:**
+*   **Plots**: Saved to `figures/`, including the main `combined_radar_bar_grid_updated.png`.
+*   **Statistics**: Detailed accuracy breakdowns printed to the console.
 
 ## Benchmark construction
 ChemIQ consists of algorithmically generated questions from eight question categories:
@@ -41,24 +115,7 @@ ChemIQ consists of algorithmically generated questions from eight question categ
 | `questions/chemiq.jsonl`| Main benchmark consisting of 816 questions.|
 | `questions/additional_smiles_to_iupac.jsonl`| Additional questions used for error analysis of SMILES to IUPAC task (functional group naming and locant numbering).|
 
-Each line in the .jsonl is a single question stored as a Python dictionary:
-
-```
-{'uuid': 'cbfe1b13-aadb-40e4-838d-388c8878e3ee',
- 'question_category': 'counting_carbon',
- 'sub_category': None,
- 'meta_data': {'smiles': 'Nc1nnc(SC(F)F)s1',
-  'smiles_random': 'S(c1sc(N)nn1)C(F)F',
-  'carbon_count': 3},
- 'prompt': 'How many carbon atoms are in the molecule:\n\nS(c1sc(N)nn1)C(F)F\n\nGive your answer as an integer. Do not write any comments.',
- 'answer': 3,
- 'answer_format': 'integer',
- 'answer_range': None,
- 'verification_method': 'exact_match',
- 'ChemIQ': True}
-```
-
-Submit each prompt to the LLM. The responses can be scored using the helpers in `2_process_results.ipynb`. For nearly all questions, the correct answer is given in the `answer` field. The only exception is the SAR questions with added noise where any value inside `answer_range` is accepted. The answer checking method is defined by `verification_method`, which points to one of the checker functions implemented in 2_process_results.ipynb.
+Each line in the .jsonl is a single question stored as a Python dictionary.
 
 ## Citation
 If you use ChemIQ, please cite:
@@ -72,3 +129,4 @@ If you use ChemIQ, please cite:
   doi={10.48550/arXiv.2505.07735},
   url={https://arxiv.org/abs/2505.07735},
 }
+```

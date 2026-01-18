@@ -1,0 +1,9 @@
+task,task_label,success_rate_pct,n_responses,n_correct
+shortest_path,Shortest Path,38.3,2376,910
+counting_ring,Ring Counting,75.95,1056,802
+counting_carbon,Carbon Counting,53.18,1100,585
+nmr_elucidation,NMR Elucidation,31.44,2112,664
+reaction,Product of Reaction,41.82,1980,828
+sar,Free-Wilson Analysis,57.95,880,510
+smiles_to_iupac,SMILES to IUPAC,25.02,4400,1101
+atom_mapping,Atom Mapping,22.65,4048,917

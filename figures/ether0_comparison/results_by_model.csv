@@ -1,0 +1,4 @@
+model,success_rate_pct,n_responses,n_correct
+ether0,84.0,25,21
+gemini-3-flash-preview-HIGH,60.0,25,15
+gemini-3-pro-preview-HIGH,56.0,25,14

@@ -39,10 +39,14 @@ def timeout(seconds=2):
 
 class AnswerVerifier:
 
-    def __init__(self, question_file):
-
-        self._question_file = question_file
-        self.all_questions = self._read_question_file(question_file)
+    def __init__(self, question_files):
+        """Initialize verifier with one or more question files.
+        
+        Args:
+            question_files: Path to question file or list of paths
+        """
+        self._question_files = question_files
+        self.all_questions = self._read_question_files(question_files)
         self.question_dict = {q["uuid"]: q for q in self.all_questions}
 
 
@@ -57,11 +61,16 @@ class AnswerVerifier:
             self._opsin_cache = {}
             
 
-    def _read_question_file(self, question_file):
+    def _read_question_files(self, question_files):
+        """Read questions from one or more JSONL files."""
+        if isinstance(question_files, str):
+            question_files = [question_files]
+        
         all_questions = []
-        with open(question_file, 'r') as f:
-            for line in f:
-                all_questions.append(json.loads(line))
+        for question_file in question_files:
+            with open(question_file, 'r') as f:
+                for line in f:
+                    all_questions.append(json.loads(line))
 
         return all_questions
         

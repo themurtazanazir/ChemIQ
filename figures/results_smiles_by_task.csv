@@ -1,0 +1,4 @@
+task,task_label,success_rate_pct,n_responses,n_correct
+nmr_elucidation,NMR Elucidation,32.88,2208,726
+reaction,Product of Reaction,42.37,2070,877
+atom_mapping,Atom Mapping,24.95,4232,1056

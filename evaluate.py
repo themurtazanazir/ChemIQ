@@ -652,12 +652,19 @@ def _prepare_summary_radar_stats(df, leaderboard_stats, task_order=None):
 
 
 
-def plot_combined_radar_bar_grid(df, output_path="figures/combined_radar_bar_grid_updated.png"):
+def plot_combined_radar_bar_grid(df, output_path="figures/combined_radar_bar_grid_updated.png", individual_plots_dir=None, no_radar=False):
     """
     Refactored main plotter.
     1. Pre-calculates all stats.
     2. Determines global scaling.
     3. Plots grid.
+    4. Optionally saves individual plots to a folder.
+
+    Args:
+        df: DataFrame with evaluation results.
+        output_path: Path for combined plot.
+        individual_plots_dir: Optional directory to save individual model plots.
+        no_radar: If True, skip radar plots in individual model charts.
     """
     models = sorted(df['model'].unique())
     valid_models = [m for m in models if len(df[df['model'] == m]) > 0]
@@ -715,6 +722,35 @@ def plot_combined_radar_bar_grid(df, output_path="figures/combined_radar_bar_gri
         label_char = chr(97 + i)
         fig.text(ax_bar.get_position().x0 - 0.035, ax_bar.get_position().y1 + 0.01,
                  f"({label_char})", fontsize=10, ha="left", va="bottom")
+        
+        # Save individual model plot if directory specified
+        if individual_plots_dir:
+            if no_radar:
+                ind_fig = plt.figure(figsize=(6, 4.5), dpi=300)
+                ind_ax_bar = ind_fig.add_subplot(111)
+                _plot_bars_from_stats(ind_ax_bar, stats,
+                                     tok_max=tok_max, show_tok_ylabel=True)
+            else:
+                ind_fig = plt.figure(figsize=(12, 4.5), dpi=300)
+                ind_gs = gridspec.GridSpec(1, 2, figure=ind_fig, width_ratios=[1, 1], wspace=0.4)
+                ind_ax_bar = ind_fig.add_subplot(ind_gs[0, 0])
+                ind_ax_radar = ind_fig.add_subplot(ind_gs[0, 1], projection="polar")
+                plot_model_pair(ind_ax_bar, ind_ax_radar, stats,
+                               tok_max=tok_max, show_tok_ylabel=True, bar_w=0.75)
+
+            ind_ax_bar.set_title(f"{m}", fontsize=12, loc='left', fontweight='bold')
+            ind_ax_bar.set_ylabel("Success Rate", fontsize=10)
+            ind_ax_bar.set_xlabel("Thinking Budget", fontsize=10)
+
+            # Sanitize model name for filename
+            safe_name = m.replace("/", "_").replace(":", "_").replace(" ", "_")
+            ind_dir = Path(individual_plots_dir)
+            ind_dir.mkdir(parents=True, exist_ok=True)
+
+            ind_fig.tight_layout()
+            ind_fig.savefig(ind_dir / f"{safe_name}.png", bbox_inches="tight", dpi=300)
+            ind_fig.savefig(ind_dir / f"{safe_name}.pdf", bbox_inches="tight")
+            plt.close(ind_fig)
 
     # 4. Summary / Leaderboard Row (Best of Each)
     best_stats = _prepare_leaderboard_stats(df, models)
@@ -748,6 +784,39 @@ def plot_combined_radar_bar_grid(df, output_path="figures/combined_radar_bar_gri
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, bbox_inches="tight", dpi=300)
     plt.close()
+    
+    # Save individual summary plot if directory specified
+    if individual_plots_dir:
+        if no_radar:
+            ind_fig = plt.figure(figsize=(8, 5), dpi=300)
+            ind_ax_bar = ind_fig.add_subplot(111)
+        else:
+            ind_fig = plt.figure(figsize=(14, 5), dpi=300)
+            ind_gs = gridspec.GridSpec(1, 2, figure=ind_fig, width_ratios=[1.3, 1], wspace=0.4)
+            ind_ax_bar = ind_fig.add_subplot(ind_gs[0, 0])
+            ind_ax_radar = ind_fig.add_subplot(ind_gs[0, 1], projection="polar")
+
+            if summary_radar_stats:
+                _plot_radar_from_stats(ind_ax_radar, summary_radar_stats)
+                ind_ax_radar.set_title("All Models Comparison", fontsize=11, y=1.1)
+
+        _plot_bars_from_stats(ind_ax_bar, best_stats,
+                              tok_max=final_tok_max, show_tok_ylabel=True,
+                              show_token_line=False)
+
+        ind_ax_bar.set_title("Best Performance by Model (Optimal Budget)", fontsize=12, loc='left', fontweight='bold')
+        ind_ax_bar.set_ylabel("Success Rate", fontsize=10)
+        ind_ax_bar.tick_params(axis='x', rotation=90, labelsize=7)
+
+        ind_dir = Path(individual_plots_dir)
+        ind_dir.mkdir(parents=True, exist_ok=True)
+
+        ind_fig.tight_layout()
+        ind_fig.savefig(ind_dir / "summary_leaderboard.png", bbox_inches="tight", dpi=300)
+        ind_fig.savefig(ind_dir / "summary_leaderboard.pdf", bbox_inches="tight")
+        plt.close(ind_fig)
+        
+        print(f"  Saved {len(valid_models) + 1} individual plots to {individual_plots_dir}/")
 
 
 # ───────────────────────────────────────────────────────────
@@ -779,9 +848,19 @@ Available tasks: {}
                            help='Path(s) to questions JSONL file(s)')
     arg_parser.add_argument('--output-dir', default='figures',
                            help='Directory for output plots (default: figures)')
+    arg_parser.add_argument('--individual-plots-dir',
+                           help='Directory to save individual model plots (optional, e.g., figures/individual)')
     arg_parser.add_argument('--tasks',
                            help=f'Comma-separated list of tasks to evaluate (default: all). '
                                 f'Available: {", ".join(QUESTION_ORDER)}')
+    arg_parser.add_argument('--models',
+                           help='Comma-separated list of models to include (default: all). '
+                                'Use model_label format, e.g., "gemini-2.5-pro-8192,o3-mini-HIGH"')
+    arg_parser.add_argument('--exclude-models',
+                           help='Comma-separated list of models to exclude. '
+                                'Use model_label format, e.g., "gpt-4o,gemini-2.0-flash"')
+    arg_parser.add_argument('--no-radar', action='store_true',
+                           help='Skip radar plots in individual model charts (useful when few tasks)')
     arg_parser.add_argument('--save-processed',
                            help='Path to save processed DataFrame (optional)')
     arg_parser.add_argument('--save-results',
@@ -801,6 +880,17 @@ Available tasks: {}
             return 1
         print(f"Filtering to tasks: {task_filter}")
     
+    # Parse models filter
+    include_models = None
+    if args.models:
+        include_models = [m.strip() for m in args.models.split(',')]
+        print(f"Including only models: {include_models}")
+    
+    exclude_models = None
+    if args.exclude_models:
+        exclude_models = [m.strip() for m in args.exclude_models.split(',')]
+        print(f"Excluding models: {exclude_models}")
+    
     # Load and process data
     print(f"Scanning {args.csv_dir} for CSV files...")
     df = find_and_combine_csvs(args.csv_dir)
@@ -811,7 +901,23 @@ Available tasks: {}
     if task_filter:
         before_count = len(df)
         df = df[df['question_category'].isin(task_filter)]
-        print(f"Filtered: {before_count} → {len(df)} rows ({len(df['question_category'].unique())} tasks)")
+        print(f"Task filter: {before_count} → {len(df)} rows ({len(df['question_category'].unique())} tasks)")
+    
+    # Apply model filters if specified
+    if include_models:
+        before_count = len(df)
+        available_models = df['model_label'].unique()
+        invalid_models = [m for m in include_models if m not in available_models]
+        if invalid_models:
+            print(f"Warning: Models not found in data: {invalid_models}")
+            print(f"Available models: {sorted(available_models)}")
+        df = df[df['model_label'].isin(include_models)]
+        print(f"Model include filter: {before_count} → {len(df)} rows ({df['model_label'].nunique()} models)")
+    
+    if exclude_models:
+        before_count = len(df)
+        df = df[~df['model_label'].isin(exclude_models)]
+        print(f"Model exclude filter: {before_count} → {len(df)} rows ({df['model_label'].nunique()} models)")
     
     if args.save_processed:
         print(f"\nSaving processed DataFrame to {args.save_processed}...")
@@ -822,9 +928,20 @@ Available tasks: {}
     print("\nGenerating plots...")
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     
+    # Determine individual plots directory
+    individual_dir = args.individual_plots_dir
+    if individual_dir:
+        print(f"  Individual plots will be saved to {individual_dir}/")
+    
     print("  1. Combined radar/bar grid...")
-    plot_combined_radar_bar_grid(df, output_path=str(Path(args.output_dir) / "combined_radar_bar_grid_updated.png"))
-    plot_combined_radar_bar_grid(df, output_path=str(Path(args.output_dir) / "combined_radar_bar_grid_updated.pdf"))
+    plot_combined_radar_bar_grid(df,
+                                 output_path=str(Path(args.output_dir) / "combined_radar_bar_grid_updated.png"),
+                                 individual_plots_dir=individual_dir,
+                                 no_radar=args.no_radar)
+    plot_combined_radar_bar_grid(df,
+                                 output_path=str(Path(args.output_dir) / "combined_radar_bar_grid_updated.pdf"),
+                                 individual_plots_dir=None,
+                                 no_radar=args.no_radar)  # Only save individual plots once
     
     print(f"\nAll plots saved to {args.output_dir}/")
     
@@ -918,6 +1035,8 @@ Available tasks: {}
                     row[task] = round(task_df['is_correct'].mean() * 100, 2)
                 else:
                     row[task] = None
+            # Add overall success rate (same as bar chart: total correct / total questions)
+            row['Overall'] = round(model_df['is_correct'].mean() * 100, 2)
             model_task_rows.append(row)
         model_task_df = pd.DataFrame(model_task_rows)
         model_task_path = f"{base_path}_model_task_matrix.csv"
@@ -926,11 +1045,14 @@ Available tasks: {}
         
         # 5. Generate heatmap for model-task matrix
         heatmap_data = model_task_df.set_index('model')
-        # Sort by mean success rate (highest at top)
-        heatmap_data['_mean'] = heatmap_data.mean(axis=1)
-        heatmap_data = heatmap_data.sort_values('_mean', ascending=True).drop(columns=['_mean'])
-        # Rename columns to readable labels
-        heatmap_data.columns = [QUESTION_LABELS.get(c, c).replace('\n', ' ') for c in heatmap_data.columns]
+        # Sort by overall success rate (already calculated as total correct / total questions)
+        heatmap_data = heatmap_data.sort_values('Overall', ascending=True)
+        # Drop Overall column when there's only one task (redundant)
+        if len(active_tasks) == 1:
+            heatmap_data = heatmap_data.drop(columns=['Overall'])
+        # Rename task columns to readable labels (but keep 'Overall' as is)
+        new_columns = [QUESTION_LABELS.get(c, c).replace('\n', ' ') for c in heatmap_data.columns]
+        heatmap_data.columns = new_columns
         
         # Create figure with appropriate size
         n_models = len(heatmap_data)
